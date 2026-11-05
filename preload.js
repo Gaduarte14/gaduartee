@@ -1,3 +1,4 @@
+// preload.cjs — precisa ter extensão .cjs porque o package.json tem "type": "module"
 const { contextBridge, ipcRenderer } = require('electron');
 
 /**
