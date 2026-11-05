@@ -33,13 +33,14 @@ jobs:
 
     steps:
       - name: Checkout do Repositório
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
-      - name: Configurar Node.js 20 LTS
-        uses: actions/setup-node@v4
+      - name: Configurar Node.js 22 LTS
+        uses: actions/setup-node@v5
         with:
-          node-version: 20
-          cache: 'npm'
+          node-version: 22
+          # Sem "cache: npm" porque o repositório não tem package-lock.json.
+          # Depois de commitar o lockfile, adicione: cache: 'npm'
 
       - name: Instalar Dependências de Sistema (Linux AppImage/deb)
         if: matrix.platform_name == 'linux'
@@ -48,15 +49,17 @@ jobs:
           sudo apt-get install -y libfuse2 rpm fakeroot dpkg
 
       - name: Instalar Pacotes NPM
+        # Se commitar o package-lock.json, troque por: npm ci
         run: npm install
 
       - name: Compilar Instaladores Electron (${{ matrix.platform_name }})
         env:
+          # Evita que o electron-builder publique sozinho (quem publica é o job "release")
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npm run ${{ matrix.build_script }}
+        run: npm run ${{ matrix.build_script }} -- --publish never
 
       - name: Enviar Instaladores para Aba Artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: CraftTunnelP2P-${{ matrix.platform_name }}-installers
           path: |
@@ -66,17 +69,32 @@ jobs:
             release/*.yml
           if-no-files-found: warn
 
-      - name: Publicar automaticamente no GitHub Releases (em Push de Tag ou Main)
-        if: github.event_name == 'push'
+  release:
+    name: Publicar no GitHub Releases
+    needs: build-electron
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Baixar todos os instaladores
+        uses: actions/download-artifact@v5
+        with:
+          path: release-files
+          merge-multiple: true
+
+      - name: Listar arquivos baixados
+        run: ls -R release-files
+
+      - name: Publicar no GitHub Releases
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name == 'main' && format('v1.0.{0}', github.run_number) || github.ref_name }}
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('v1.0.{0}', github.run_number) }}
           name: "CraftTunnel P2P Build #${{ github.run_number }}"
           draft: false
           prerelease: false
           files: |
-            release/*.exe
-            release/*.AppImage
-            release/*.deb
+            release-files/*.exe
+            release-files/*.AppImage
+            release-files/*.deb
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
