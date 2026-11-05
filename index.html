@@ -4,16 +4,9 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>CraftTunnel P2P — Minecraft LAN VPN</title>
-    <meta name="description" content="Aplicativo Desktop multiplataforma (Electron + Hyperswarm DHT) para túneis P2P de partidas LAN de Minecraft sem drivers virtuais TUN/TAP ou permissões de administrador." />
-    <meta property="og:title" content="CraftTunnel P2P — Minecraft LAN VPN" />
-    <meta property="og:description" content="Aplicativo Desktop multiplataforma (Electron + Hyperswarm DHT) para túneis P2P de partidas LAN de Minecraft sem drivers virtuais TUN/TAP ou permissões de administrador." />
-    <meta property="og:type" content="website" />
-    <meta name="twitter:card" content="summary_large_image" />
-    <!-- Google Fonts: Plus Jakarta Sans (Display/UI) & JetBrains Mono (Tabular Telemetry/Logs) -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <!-- Tailwind CSS via CDN (Requisito obrigatório para execução direta via Electron loadFile('index.html')) -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
       tailwind.config = {
@@ -29,25 +22,88 @@
       };
     </script>
   </head>
-  <body class="bg-[#0B0E14] text-slate-100 antialiased selection:bg-indigo-500/30 selection:text-indigo-200 overflow-x-hidden">
-    <!-- Container montado pela UI (React/Vite no navegador ou Vanilla JS fallback se aberto diretamente sem bundler) -->
-    <div id="root"></div>
+  <body class="bg-[#0B0E14] text-slate-100 min-h-screen p-8 flex flex-col items-center justify-center font-sans">
+    
+    <div class="max-w-xl w-full bg-slate-900/60 border border-slate-800 rounded-2xl p-6 shadow-2xl backdrop-blur-md">
+      <div class="flex items-center gap-3 mb-6">
+        <div class="w-4 h-4 rounded-full bg-emerald-500 animate-pulse"></div>
+        <h1 class="text-2xl font-bold tracking-tight text-white">CraftTunnel P2P</h1>
+      </div>
 
-    <!-- Script principal da aplicação React/Vite -->
-    <script type="module" src="/src/main.tsx"></script>
+      <div class="space-y-4">
+        <div>
+          <label class="block text-xs uppercase tracking-wider font-semibold text-slate-400 mb-2">Seu Nickname</label>
+          <input id="nickname" type="text" value="Steve" class="w-full bg-slate-800/80 border border-slate-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-indigo-500" />
+        </div>
 
-    <!-- Fallback autônomo em Vanilla JS caso o index.html seja carregado diretamente pelo Electron sem servidor Vite -->
+        <div>
+          <label class="block text-xs uppercase tracking-wider font-semibold text-slate-400 mb-2">Código da Sala (Qualquer palavra secreta)</label>
+          <input id="roomCode" type="text" placeholder="Ex: sala-dos-amigos-123" class="w-full bg-slate-800/80 border border-slate-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-indigo-500" />
+        </div>
+
+        <div class="grid grid-cols-2 gap-4 pt-2">
+          <button id="btnHost" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-3 rounded-xl transition duration-200">
+            Criar Sala (Host)
+          </button>
+          <button id="btnClient" class="w-full bg-slate-700 hover:bg-slate-600 text-white font-semibold py-3 rounded-xl transition duration-200">
+            Entrar em Sala
+          </button>
+        </div>
+
+        <button id="btnStop" class="hidden w-full bg-rose-600 hover:bg-rose-500 text-white font-semibold py-3 rounded-xl transition duration-200">
+          Encerrar Túnel
+        </button>
+      </div>
+
+      <div class="mt-6 pt-4 border-t border-slate-800">
+        <h3 class="text-xs uppercase tracking-wider font-semibold text-slate-500 mb-2">Logs de Conexão</h3>
+        <div id="logs" class="font-mono text-xs bg-black/40 rounded-lg p-3 h-40 overflow-y-auto space-y-1 text-slate-400 border border-slate-800/50">
+          <div>[CraftTunnel] Pronto para conectar.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Script nativo Vanilla que interage diretamente com o preload.cjs -->
     <script>
-      window.addEventListener('DOMContentLoaded', () => {
-        setTimeout(() => {
-          const root = document.getElementById('root');
-          if (root && root.children.length === 0 && window.craftTunnelAPI) {
-            // Caso o bundle Vite não esteja ativo (ex: electron . direto no index.html bruto),
-            // inicializa a interface nativa ligada ao window.craftTunnelAPI
-            console.info('[CraftTunnel] Inicializando modo nativo Electron via contextBridge.');
-          }
-        }, 500);
-      });
+      const addLog = (msg) => {
+        const logs = document.getElementById('logs');
+        const line = document.createElement('div');
+        line.textContent = msg;
+        logs.appendChild(line);
+        logs.scrollTop = logs.scrollHeight;
+      };
+
+      if (window.craftTunnelAPI) {
+        window.craftTunnelAPI.onLog((entry) => {
+          addLog(`[${entry.category}] ${entry.message}`);
+        });
+
+        document.getElementById('btnHost').onclick = async () => {
+          const room = document.getElementById('roomCode').value;
+          const nick = document.getElementById('nickname').value;
+          if (!room) return alert('Digite um código de sala!');
+          addLog('[SYS] Iniciando como Host...');
+          await window.craftTunnelAPI.startTunnel({ mode: 'host', roomCode: room, nickname: nick });
+          document.getElementById('btnStop').classList.remove('hidden');
+        };
+
+        document.getElementById('btnClient').onclick = async () => {
+          const room = document.getElementById('roomCode').value;
+          const nick = document.getElementById('nickname').value;
+          if (!room) return alert('Digite o código da sala!');
+          addLog('[SYS] Conectando como Cliente...');
+          await window.craftTunnelAPI.startTunnel({ mode: 'client', roomCode: room, nickname: nick });
+          document.getElementById('btnStop').classList.remove('hidden');
+        };
+
+        document.getElementById('btnStop').onclick = async () => {
+          await window.craftTunnelAPI.stopTunnel();
+          document.getElementById('btnStop').classList.add('hidden');
+          addLog('[SYS] Túnel finalizado.');
+        };
+      } else {
+        addLog('[AVISO] API do Electron não encontrada (executando fora do app?).');
+      }
     </script>
   </body>
 </html>
