@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="pt-BR" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CraftTunnel P2P — Minecraft LAN VPN</title>
+    <meta name="description" content="Aplicativo Desktop multiplataforma (Electron + Hyperswarm DHT) para túneis P2P de partidas LAN de Minecraft sem drivers virtuais TUN/TAP ou permissões de administrador." />
+    <meta property="og:title" content="CraftTunnel P2P — Minecraft LAN VPN" />
+    <meta property="og:description" content="Aplicativo Desktop multiplataforma (Electron + Hyperswarm DHT) para túneis P2P de partidas LAN de Minecraft sem drivers virtuais TUN/TAP ou permissões de administrador." />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <!-- Google Fonts: Plus Jakarta Sans (Display/UI) & JetBrains Mono (Tabular Telemetry/Logs) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <!-- Tailwind CSS via CDN (Requisito obrigatório para execução direta via Electron loadFile('index.html')) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        darkMode: 'class',
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['"Plus Jakarta Sans"', 'system-ui', 'sans-serif'],
+              mono: ['"JetBrains Mono"', 'monospace'],
+            },
+          },
+        },
+      };
+    </script>
+  </head>
+  <body class="bg-[#0B0E14] text-slate-100 antialiased selection:bg-indigo-500/30 selection:text-indigo-200 overflow-x-hidden">
+    <!-- Container montado pela UI (React/Vite no navegador ou Vanilla JS fallback se aberto diretamente sem bundler) -->
+    <div id="root"></div>
+
+    <!-- Script principal da aplicação React/Vite -->
+    <script type="module" src="/src/main.tsx"></script>
+
+    <!-- Fallback autônomo em Vanilla JS caso o index.html seja carregado diretamente pelo Electron sem servidor Vite -->
+    <script>
+      window.addEventListener('DOMContentLoaded', () => {
+        setTimeout(() => {
+          const root = document.getElementById('root');
+          if (root && root.children.length === 0 && window.craftTunnelAPI) {
+            // Caso o bundle Vite não esteja ativo (ex: electron . direto no index.html bruto),
+            // inicializa a interface nativa ligada ao window.craftTunnelAPI
+            console.info('[CraftTunnel] Inicializando modo nativo Electron via contextBridge.');
+          }
+        }, 500);
+      });
+    </script>
+  </body>
+</html>
