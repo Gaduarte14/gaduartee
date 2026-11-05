@@ -8,10 +8,10 @@ import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import Hyperswarm from 'hyperswarm';
 import b4a from 'b4a';
-
+ 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-
+ 
 // ============================================================================
 // CONSTANTES DO PROTOCOLO P2P MULTIPLEXADO (CANAL DE CONTROLE + STREAMS TCP)
 // ============================================================================
@@ -19,12 +19,12 @@ const FRAME_CONTROL_JSON = 0x01; // Handshake (nickname, role, worldMotd) + Ping
 const FRAME_TCP_OPEN     = 0x02; // Abertura de conexão TCP do Minecraft
 const FRAME_TCP_DATA     = 0x03; // Dados brutos TCP do Minecraft (isolados do chat/ping)
 const FRAME_TCP_CLOSE    = 0x04; // Fechamento seguro de stream TCP
-
+ 
 const MC_MULTICAST_ADDR = '224.0.2.60';
 const MC_MULTICAST_PORT = 4445;
-
+ 
 let mainWindow = null;
-
+ 
 // Estado Global da Sessão P2P
 let swarm = null;
 let currentMode = null; // 'host' | 'client'
@@ -32,10 +32,10 @@ let currentRoomCode = '';
 let currentNickname = 'Steve';
 let hostMinecraftPort = 25565;
 let detectedWorldMotd = 'Mundo Minecraft LAN';
-
+ 
 // Map<peerId, { conn, nickname, role, ping, pingTimer, decoderBuffer, streams: Map<streamId, net.Socket> }>
 const activePeers = new Map();
-
+ 
 // Recursos de Rede Locais
 let hostLanDetectorSocket = null;
 let clientTcpServer = null;
@@ -43,7 +43,7 @@ let clientLocalTcpPort = 25565;
 let clientUdpAnnouncerSocket = null;
 let clientUdpAnnouncerTimer = null;
 let nextStreamId = 1;
-
+ 
 // ============================================================================
 // ARMAZENAMENTO DE HISTÓRICO DE SALAS (JSON PERSISTENTE EM userData)
 // ============================================================================
@@ -51,7 +51,7 @@ function getHistoryFilePath() {
   const userDataDir = app.getPath('userData');
   return path.join(userDataDir, 'room-history.json');
 }
-
+ 
 function readRoomHistoryFromDisk() {
   try {
     const file = getHistoryFilePath();
@@ -64,7 +64,7 @@ function readRoomHistoryFromDisk() {
     return [];
   }
 }
-
+ 
 function writeRoomHistoryToDisk(historyArray) {
   try {
     const file = getHistoryFilePath();
@@ -76,17 +76,17 @@ function writeRoomHistoryToDisk(historyArray) {
     return false;
   }
 }
-
+ 
 function upsertHistoryRecord({ roomCode, alias, mode, nickname, mcPort }) {
   const cleanCode = String(roomCode || '').trim();
   if (!cleanCode) return readRoomHistoryFromDisk();
-
+ 
   const existing = readRoomHistoryFromDisk();
   const now = new Date().toISOString();
   const index = existing.findIndex(
     (item) => String(item.roomCode).toLowerCase() === cleanCode.toLowerCase()
   );
-
+ 
   let updated;
   if (index >= 0) {
     const prev = existing[index];
@@ -114,16 +114,16 @@ function upsertHistoryRecord({ roomCode, alias, mode, nickname, mcPort }) {
     };
     updated = [created, ...existing];
   }
-
+ 
   updated.sort((a, b) => {
     if (Boolean(a.pinned) !== Boolean(b.pinned)) return a.pinned ? -1 : 1;
     return new Date(b.lastVisited).getTime() - new Date(a.lastVisited).getTime();
   });
-
+ 
   writeRoomHistoryToDisk(updated);
   return updated;
 }
-
+ 
 // ============================================================================
 // UTILITÁRIOS DE LOG E EVENTOS IPC PARA O RENDERER
 // ============================================================================
@@ -139,10 +139,10 @@ function sendLog(level, category, message) {
     mainWindow.webContents.send('p2p:log', entry);
   }
 }
-
+ 
 function broadcastPeerList() {
   if (!mainWindow || mainWindow.isDestroyed()) return;
-
+ 
   const peers = [];
   // Inclui o próprio jogador no topo da lista
   peers.push({
@@ -153,7 +153,7 @@ function broadcastPeerList() {
     isSelf: true,
     activeStreams: 0,
   });
-
+ 
   for (const [peerId, peer] of activePeers.entries()) {
     peers.push({
       peerId,
@@ -164,16 +164,16 @@ function broadcastPeerList() {
       activeStreams: peer.streams ? peer.streams.size : 0,
     });
   }
-
+ 
   mainWindow.webContents.send('p2p:peers', peers);
 }
-
+ 
 function broadcastTunnelState(statusPayload) {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('p2p:state', statusPayload);
   }
 }
-
+ 
 // ============================================================================
 // CODIFICAÇÃO E DECODIFICAÇÃO DE FRAMES MULTIPLEXADOS (9-BYTE HEADER)
 // Layout: [1B Type][4B StreamID UInt32BE][4B PayloadLen UInt32BE][Payload...]
@@ -185,7 +185,7 @@ function encodeFrame(type, streamId, payloadBuffer) {
   header.writeUInt32BE(payloadBuffer.length >>> 0, 5);
   return b4a.concat([header, payloadBuffer]);
 }
-
+ 
 function sendControlJson(conn, obj) {
   if (!conn || conn.destroyed) return;
   try {
@@ -195,7 +195,7 @@ function sendControlJson(conn, obj) {
     sendLog('warn', 'P2P', `Falha ao enviar pacote de controle: ${err.message}`);
   }
 }
-
+ 
 function sendTcpFrame(conn, type, streamId, dataBuf = b4a.alloc(0)) {
   if (!conn || conn.destroyed) return;
   try {
@@ -204,7 +204,7 @@ function sendTcpFrame(conn, type, streamId, dataBuf = b4a.alloc(0)) {
     sendLog('warn', 'TCP', `Erro ao escrever frame TCP #${streamId}: ${err.message}`);
   }
 }
-
+ 
 // ============================================================================
 // COMPATIBILIDADE INTERFACES DE REDE MULTICAST (WINDOWS + LINUX MULTI-NIC)
 // ============================================================================
@@ -220,35 +220,35 @@ function getLocalIPv4Interfaces() {
   }
   return Array.from(new Set(addresses));
 }
-
+ 
 // ============================================================================
 // MODO A (HOST): DETECTOR AUTOMÁTICO DE PORTA LAN DO MINECRAFT (UDP 4445)
 // ============================================================================
 function startHostLanDetector() {
   stopHostLanDetector();
-
+ 
   try {
     const sock = dgram.createSocket({ type: 'udp4', reuseAddr: true });
     hostLanDetectorSocket = sock;
-
+ 
     sock.on('error', (err) => {
       sendLog('error', 'LAN', `Erro no detector UDP 4445: ${err.message}`);
     });
-
+ 
     sock.on('message', (msg, rinfo) => {
       const text = msg.toString('utf8');
       const motdMatch = text.match(/\[MOTD\]([\s\S]*?)\[\/MOTD\]/);
       const adMatch = text.match(/\[AD\](\d+)\[\/AD\]/);
-
+ 
       if (adMatch) {
         const port = parseInt(adMatch[1], 10);
         const motd = motdMatch ? motdMatch[1].trim() : 'Mundo Minecraft LAN';
-
+ 
         if (port > 0 && port <= 65535) {
           const changed = hostMinecraftPort !== port || detectedWorldMotd !== motd;
           hostMinecraftPort = port;
           detectedWorldMotd = motd;
-
+ 
           if (changed) {
             sendLog(
               'success',
@@ -274,13 +274,13 @@ function startHostLanDetector() {
         }
       }
     });
-
+ 
     sock.bind(MC_MULTICAST_PORT, () => {
       try {
         sock.setBroadcast(true);
         sock.setMulticastTTL(128);
         sock.setMulticastLoopback(true);
-
+ 
         const ifaces = getLocalIPv4Interfaces();
         for (const ifaceAddr of ifaces) {
           try {
@@ -302,7 +302,7 @@ function startHostLanDetector() {
     sendLog('error', 'LAN', `Não foi possível iniciar detector UDP: ${err.message}`);
   }
 }
-
+ 
 function stopHostLanDetector() {
   if (hostLanDetectorSocket) {
     try {
@@ -313,7 +313,7 @@ function stopHostLanDetector() {
     hostLanDetectorSocket = null;
   }
 }
-
+ 
 // ============================================================================
 // MODO B (CLIENTE): SERVIDOR TCP LOCAL + BROADCAST LAN FALSO (UDP 224.0.2.60:4445)
 // ============================================================================
@@ -324,15 +324,15 @@ function findHostPeer() {
   // Fallback para o primeiro peer conectado caso o handshake ainda esteja sincronizando
   return activePeers.values().next().value || null;
 }
-
+ 
 function startClientLocalTcpProxy(preferredPort = 25565) {
   return new Promise((resolve, reject) => {
     stopClientLocalTcpProxy();
-
+ 
     const server = net.createServer((minecraftSocket) => {
       minecraftSocket.setNoDelay(true);
       const hostPeer = findHostPeer();
-
+ 
       if (!hostPeer || !hostPeer.conn || hostPeer.conn.destroyed) {
         sendLog(
           'warn',
@@ -342,7 +342,7 @@ function startClientLocalTcpProxy(preferredPort = 25565) {
         minecraftSocket.destroy();
         return;
       }
-
+ 
       const streamId = nextStreamId++;
       hostPeer.streams.set(streamId, minecraftSocket);
       sendLog(
@@ -351,14 +351,14 @@ function startClientLocalTcpProxy(preferredPort = 25565) {
         `Conexão do Minecraft recebida (Stream #${streamId}). Encaminhando pelo túnel P2P até ${hostPeer.nickname}...`
       );
       broadcastPeerList();
-
+ 
       // Solicita ao Host a abertura do pipe TCP para 127.0.0.1:[PORTA_DO_MINECRAFT]
       sendTcpFrame(hostPeer.conn, FRAME_TCP_OPEN, streamId);
-
+ 
       minecraftSocket.on('data', (chunk) => {
         sendTcpFrame(hostPeer.conn, FRAME_TCP_DATA, streamId, chunk);
       });
-
+ 
       const cleanupStream = () => {
         if (hostPeer.streams.has(streamId)) {
           hostPeer.streams.delete(streamId);
@@ -366,14 +366,14 @@ function startClientLocalTcpProxy(preferredPort = 25565) {
           broadcastPeerList();
         }
       };
-
+ 
       minecraftSocket.on('close', cleanupStream);
       minecraftSocket.on('error', (err) => {
         sendLog('warn', 'TCP', `Aviso no socket local do Minecraft (#${streamId}): ${err.message}`);
         cleanupStream();
       });
     });
-
+ 
     server.on('error', (err) => {
       if (err.code === 'EADDRINUSE' && preferredPort !== 0) {
         sendLog(
@@ -387,7 +387,7 @@ function startClientLocalTcpProxy(preferredPort = 25565) {
         reject(err);
       }
     });
-
+ 
     server.listen(preferredPort, '127.0.0.1', () => {
       const addr = server.address();
       clientLocalTcpPort = typeof addr === 'object' && addr ? addr.port : preferredPort;
@@ -401,7 +401,7 @@ function startClientLocalTcpProxy(preferredPort = 25565) {
     });
   });
 }
-
+ 
 function stopClientLocalTcpProxy() {
   if (clientTcpServer) {
     try {
@@ -412,24 +412,24 @@ function stopClientLocalTcpProxy() {
     clientTcpServer = null;
   }
 }
-
+ 
 function startClientFakeLanBroadcast() {
   stopClientFakeLanBroadcast();
-
+ 
   try {
     const sock = dgram.createSocket({ type: 'udp4', reuseAddr: true });
     clientUdpAnnouncerSocket = sock;
-
+ 
     sock.on('error', (err) => {
       sendLog('warn', 'LAN', `Aviso no socket de Broadcast LAN UDP: ${err.message}`);
     });
-
+ 
     sock.bind(0, '0.0.0.0', () => {
       try {
         sock.setBroadcast(true);
         sock.setMulticastTTL(128);
         sock.setMulticastLoopback(true);
-
+ 
         // Compatibilidade Linux + Windows: define interface multicast primária
         try {
           sock.setMulticastInterface('0.0.0.0');
@@ -443,14 +443,14 @@ function startClientFakeLanBroadcast() {
       } catch (err) {
         sendLog('warn', 'LAN', `Erro ao configurar flags UDP: ${err.message}`);
       }
-
+ 
       const broadcastPacket = () => {
         if (!clientUdpAnnouncerSocket) return;
         const hostPeer = findHostPeer();
         const hostName = hostPeer ? hostPeer.nickname : 'Aguardando Host';
         const message = `[MOTD]Sala P2P - ${hostName}[/MOTD][AD]${clientLocalTcpPort}[/AD]`;
         const payload = b4a.from(message, 'utf8');
-
+ 
         // Emite no grupo Multicast oficial do Minecraft (224.0.2.60:4445)
         // E itera interfaces em sistemas Linux com múltiplas placas de rede
         const interfacesToTry = ['0.0.0.0', '127.0.0.1'];
@@ -463,7 +463,7 @@ function startClientFakeLanBroadcast() {
           sock.send(payload, 0, payload.length, MC_MULTICAST_PORT, MC_MULTICAST_ADDR);
         }
       };
-
+ 
       broadcastPacket();
       clientUdpAnnouncerTimer = setInterval(broadcastPacket, 1500);
       sendLog(
@@ -476,7 +476,7 @@ function startClientFakeLanBroadcast() {
     sendLog('error', 'LAN', `Falha ao iniciar Broadcast LAN Falso: ${err.message}`);
   }
 }
-
+ 
 function stopClientFakeLanBroadcast() {
   if (clientUdpAnnouncerTimer) {
     clearInterval(clientUdpAnnouncerTimer);
@@ -491,14 +491,14 @@ function stopClientFakeLanBroadcast() {
     clientUdpAnnouncerSocket = null;
   }
 }
-
+ 
 // ============================================================================
 // GERENCIAMENTO DE CONEXÕES HYPERSWARM E MULTIPLEXAÇÃO DE PROTOCOLO
 // ============================================================================
 function handleIncomingPeerConnection(conn, info) {
   const peerId = b4a.toString(info.publicKey, 'hex').slice(0, 12);
   conn.setKeepAlive(true, 3000);
-
+ 
   const peerState = {
     peerId,
     conn,
@@ -509,10 +509,10 @@ function handleIncomingPeerConnection(conn, info) {
     decoderBuffer: b4a.alloc(0),
     streams: new Map(), // streamId -> net.Socket
   };
-
+ 
   activePeers.set(peerId, peerState);
   sendLog('success', 'P2P', `Túnel P2P direto estabelecido com peer [${peerId}] via NAT Hole Punching!`);
-
+ 
   // 1. Envia Handshake JSON imediato pelo Canal de Controle (Frame 0x01)
   sendControlJson(conn, {
     type: 'handshake',
@@ -521,7 +521,7 @@ function handleIncomingPeerConnection(conn, info) {
     motd: detectedWorldMotd,
     mcPort: hostMinecraftPort,
   });
-
+ 
   // 2. Inicia ciclo de Ping/Pong a cada 3 segundos
   peerState.pingTimer = setInterval(() => {
     sendControlJson(conn, {
@@ -529,40 +529,40 @@ function handleIncomingPeerConnection(conn, info) {
       ts: Date.now(),
     });
   }, 3000);
-
+ 
   // Dispara um primeiro ping imediato
   sendControlJson(conn, { type: 'ping', ts: Date.now() });
   broadcastPeerList();
-
+ 
   conn.on('data', (chunk) => {
     peerState.decoderBuffer = b4a.concat([peerState.decoderBuffer, chunk]);
-
+ 
     while (peerState.decoderBuffer.length >= 9) {
       const frameType = peerState.decoderBuffer.readUInt8(0);
       const streamId = peerState.decoderBuffer.readUInt32BE(1);
       const payloadLength = peerState.decoderBuffer.readUInt32BE(5);
-
+ 
       if (payloadLength > 16 * 1024 * 1024) {
         sendLog('error', 'P2P', `Frame excedeu limite de segurança (${payloadLength} bytes). Limpando buffer.`);
         peerState.decoderBuffer = b4a.alloc(0);
         break;
       }
-
+ 
       if (peerState.decoderBuffer.length < 9 + payloadLength) {
         break; // Aguarda o restante do pacote TCP/P2P chegar
       }
-
+ 
       const payload = peerState.decoderBuffer.subarray(9, 9 + payloadLength);
       peerState.decoderBuffer = peerState.decoderBuffer.subarray(9 + payloadLength);
-
+ 
       processMultiplexedFrame(peerState, frameType, streamId, payload);
     }
   });
-
+ 
   const cleanupPeer = (reason) => {
     if (!activePeers.has(peerId)) return;
     if (peerState.pingTimer) clearInterval(peerState.pingTimer);
-
+ 
     for (const [, tcpSocket] of peerState.streams.entries()) {
       try {
         tcpSocket.destroy();
@@ -572,20 +572,20 @@ function handleIncomingPeerConnection(conn, info) {
     }
     peerState.streams.clear();
     activePeers.delete(peerId);
-
+ 
     sendLog('warn', 'P2P', `Peer ${peerState.nickname} [${peerId}] desconectou (${reason}).`);
     broadcastPeerList();
   };
-
+ 
   conn.on('close', () => cleanupPeer('conexão encerrada'));
   conn.on('error', (err) => cleanupPeer(err.message || 'erro de transporte'));
 }
-
+ 
 function processMultiplexedFrame(peerState, frameType, streamId, payload) {
   if (frameType === FRAME_CONTROL_JSON) {
     try {
       const data = JSON.parse(b4a.toString(payload, 'utf8'));
-
+ 
       if (data.type === 'handshake') {
         peerState.nickname = data.nickname || peerState.nickname;
         peerState.role = data.role || peerState.role;
@@ -616,11 +616,11 @@ function processMultiplexedFrame(peerState, frameType, streamId, payload) {
     }
     return;
   }
-
+ 
   // MODO HOST: Quando o amigo abre uma conexão no Minecraft dele (FRAME_TCP_OPEN)
   if (frameType === FRAME_TCP_OPEN) {
     if (currentMode !== 'host') return;
-
+ 
     const targetPort = Number(hostMinecraftPort) || 25565;
     const mcServerSocket = net.connect({ host: '127.0.0.1', port: targetPort }, () => {
       mcServerSocket.setNoDelay(true);
@@ -630,14 +630,14 @@ function processMultiplexedFrame(peerState, frameType, streamId, payload) {
         `Pipe TCP #${streamId} conectado ao Minecraft local (127.0.0.1:${targetPort}) para o jogador ${peerState.nickname}`
       );
     });
-
+ 
     peerState.streams.set(streamId, mcServerSocket);
     broadcastPeerList();
-
+ 
     mcServerSocket.on('data', (chunk) => {
       sendTcpFrame(peerState.conn, FRAME_TCP_DATA, streamId, chunk);
     });
-
+ 
     const closeHostPipe = () => {
       if (peerState.streams.has(streamId)) {
         peerState.streams.delete(streamId);
@@ -645,7 +645,7 @@ function processMultiplexedFrame(peerState, frameType, streamId, payload) {
         broadcastPeerList();
       }
     };
-
+ 
     mcServerSocket.on('close', closeHostPipe);
     mcServerSocket.on('error', (err) => {
       sendLog(
@@ -657,7 +657,7 @@ function processMultiplexedFrame(peerState, frameType, streamId, payload) {
     });
     return;
   }
-
+ 
   // Tráfego de jogo em andamento (Host <-> Cliente)
   if (frameType === FRAME_TCP_DATA) {
     const socket = peerState.streams.get(streamId);
@@ -666,7 +666,7 @@ function processMultiplexedFrame(peerState, frameType, streamId, payload) {
     }
     return;
   }
-
+ 
   // Fechamento limpo de stream individual
   if (frameType === FRAME_TCP_CLOSE) {
     const socket = peerState.streams.get(streamId);
@@ -681,7 +681,7 @@ function processMultiplexedFrame(peerState, frameType, streamId, payload) {
     }
   }
 }
-
+ 
 // ============================================================================
 // INICIALIZAÇÃO E ENCERRAMENTO DO TÚNEL HYPERSWARM (DHT SHA-256)
 // ============================================================================
@@ -689,7 +689,7 @@ async function stopTunnelSession() {
   stopHostLanDetector();
   stopClientLocalTcpProxy();
   stopClientFakeLanBroadcast();
-
+ 
   for (const [, peer] of activePeers.entries()) {
     if (peer.pingTimer) clearInterval(peer.pingTimer);
     for (const [, s] of peer.streams.entries()) {
@@ -706,7 +706,7 @@ async function stopTunnelSession() {
     }
   }
   activePeers.clear();
-
+ 
   if (swarm) {
     try {
       await swarm.destroy();
@@ -715,7 +715,7 @@ async function stopTunnelSession() {
     }
     swarm = null;
   }
-
+ 
   currentMode = null;
   broadcastPeerList();
   broadcastTunnelState({
@@ -726,32 +726,32 @@ async function stopTunnelSession() {
     localDirectConnect: '',
   });
 }
-
+ 
 async function startTunnelSession({ mode, roomCode, alias, nickname, mcPort }) {
   await stopTunnelSession();
-
+ 
   currentMode = mode === 'host' ? 'host' : 'client';
   currentRoomCode = String(roomCode || '').trim();
   currentNickname = String(nickname || 'Steve').trim() || 'Steve';
   if (mcPort && Number(mcPort) > 0) {
     hostMinecraftPort = Number(mcPort);
   }
-
+ 
   // 1. Converte o Nome da Sala em um Hash SHA-256 de 32 bytes para a DHT
   const topicBuffer = crypto.createHash('sha256').update(currentRoomCode).digest();
   const topicHex = b4a.toString(topicBuffer, 'hex');
-
+ 
   sendLog('info', 'DHT', `Inicializando nó Hyperswarm DHT...`);
   sendLog('info', 'DHT', `Sala: "${currentRoomCode}" -> Tópico SHA-256 (32B): ${topicHex.slice(0, 24)}...`);
-
+ 
   swarm = new Hyperswarm();
-
+ 
   swarm.on('connection', (conn, info) => {
     handleIncomingPeerConnection(conn, info);
   });
-
+ 
   let localEndpoint = `127.0.0.1:${hostMinecraftPort}`;
-
+ 
   if (currentMode === 'host') {
     startHostLanDetector();
     sendLog(
@@ -764,12 +764,12 @@ async function startTunnelSession({ mode, roomCode, alias, nickname, mcPort }) {
     localEndpoint = `127.0.0.1:${boundPort}`;
     startClientFakeLanBroadcast();
   }
-
+ 
   const discovery = swarm.join(topicBuffer, {
     server: true,
     client: true,
   });
-
+ 
   discovery.flushed().then(() => {
     sendLog(
       'success',
@@ -779,7 +779,7 @@ async function startTunnelSession({ mode, roomCode, alias, nickname, mcPort }) {
   }).catch((err) => {
     sendLog('warn', 'DHT', `Aviso durante flush da DHT: ${err.message}`);
   });
-
+ 
   // Salva automaticamente no histórico persistente de salas
   const updatedHistory = upsertHistoryRecord({
     roomCode: currentRoomCode,
@@ -788,7 +788,7 @@ async function startTunnelSession({ mode, roomCode, alias, nickname, mcPort }) {
     nickname: currentNickname,
     mcPort: hostMinecraftPort,
   });
-
+ 
   broadcastPeerList();
   const statePayload = {
     connected: true,
@@ -802,7 +802,7 @@ async function startTunnelSession({ mode, roomCode, alias, nickname, mcPort }) {
   broadcastTunnelState(statePayload);
   return statePayload;
 }
-
+ 
 // ============================================================================
 // IPC HANDLERS (COMUNICAÇÃO SEGURA ENTRE RENDERER E MAIN)
 // ============================================================================
@@ -810,13 +810,13 @@ function registerIpcHandlers() {
   ipcMain.handle('p2p:start', async (_event, config) => {
     return await startTunnelSession(config);
   });
-
+ 
   ipcMain.handle('p2p:stop', async () => {
     await stopTunnelSession();
     sendLog('info', 'SYS', 'Túnel P2P encerrado pelo usuário.');
     return { connected: false };
   });
-
+ 
   ipcMain.handle('p2p:set-mc-port', (_event, portNumber) => {
     const parsed = parseInt(portNumber, 10);
     if (!Number.isNaN(parsed) && parsed > 0 && parsed <= 65535) {
@@ -826,22 +826,22 @@ function registerIpcHandlers() {
     }
     return { ok: false };
   });
-
+ 
   ipcMain.handle('p2p:detect-lan-now', () => {
     startHostLanDetector();
     sendLog('info', 'LAN', 'Reiniciando varredura UDP na porta 4445 (224.0.2.60)...');
     return { ok: true, port: hostMinecraftPort, motd: detectedWorldMotd };
   });
-
+ 
   // Handlers de Histórico de Salas (Persistência em arquivo JSON local)
   ipcMain.handle('history:get', () => {
     return readRoomHistoryFromDisk();
   });
-
+ 
   ipcMain.handle('history:save', (_event, entry) => {
     return upsertHistoryRecord(entry);
   });
-
+ 
   ipcMain.handle('history:delete', (_event, roomCode) => {
     const existing = readRoomHistoryFromDisk();
     const filtered = existing.filter(
@@ -850,7 +850,7 @@ function registerIpcHandlers() {
     writeRoomHistoryToDisk(filtered);
     return filtered;
   });
-
+ 
   ipcMain.handle('history:toggle-pin', (_event, roomCode) => {
     const existing = readRoomHistoryFromDisk();
     const updated = existing.map((item) => {
@@ -866,13 +866,13 @@ function registerIpcHandlers() {
     writeRoomHistoryToDisk(updated);
     return updated;
   });
-
+ 
   ipcMain.handle('history:clear', () => {
     writeRoomHistoryToDisk([]);
     return [];
   });
 }
-
+ 
 // ============================================================================
 // CICLO DE VIDA DA JANELA ELECTRON
 // ============================================================================
@@ -886,30 +886,38 @@ function createMainWindow() {
     backgroundColor: '#0b0e14',
     autoHideMenuBar: true,
     webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
+      // CORRIGIDO: preload em CommonJS (.cjs) por causa do "type": "module"
+      preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
     },
   });
-
-  mainWindow.loadFile(path.join(__dirname, 'index.html'));
+ 
+  // CORRIGIDO: carrega o front compilado pelo Vite (dist/index.html)
+  if (!app.isPackaged && process.env.VITE_DEV_SERVER_URL) {
+    // Desenvolvimento com hot reload (npm run dev rodando em outro terminal)
+    mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
+  } else {
+    mainWindow.loadFile(path.join(__dirname, 'dist', 'index.html'));
+  }
 }
-
+ 
 app.whenReady().then(() => {
   registerIpcHandlers();
   createMainWindow();
-
+ 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createMainWindow();
     }
   });
 });
-
+ 
 app.on('window-all-closed', async () => {
   await stopTunnelSession();
   if (process.platform !== 'darwin') {
     app.quit();
   }
 });
+ 
