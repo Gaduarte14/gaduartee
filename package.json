@@ -9,13 +9,10 @@
   "main": "main.js",
   "scripts": {
     "start": "npm run build && electron .",
-    "dev": "vite --port=3000 --host=0.0.0.0",
-    "build": "vite build",
+    "build": "node -e \"const fs = require('fs'); fs.mkdirSync('dist', { recursive: true }); fs.copyFileSync('index.html', 'dist/index.html');\"",
     "build:win": "npm run build && electron-builder --win --x64",
     "build:linux": "npm run build && electron-builder --linux --x64",
-    "preview": "vite preview",
-    "clean": "rm -rf dist server.js",
-    "lint": "tsc --noEmit"
+    "clean": "node -e \"const fs = require('fs'); fs.rmSync('dist', { recursive: true, force: true });\""
   },
   "build": {
     "appId": "com.crafttunnel.p2p",
@@ -61,30 +58,11 @@
     }
   },
   "dependencies": {
-    "@google/genai": "^2.4.0",
     "b4a": "^1.6.7",
-    "dotenv": "^17.2.3",
-    "express": "^4.21.2",
     "hyperswarm": "^4.11.1"
   },
   "devDependencies": {
-    "@tailwindcss/vite": "^4.3.3",
-    "@types/express": "^4.17.21",
-    "@types/node": "^22.14.0",
-    "@types/react": "^19.3.0",
-    "@types/react-dom": "^19.3.0",
-    "@vitejs/plugin-react": "^6.1.1",
-    "autoprefixer": "^10.4.21",
     "electron": "^33.2.0",
-    "electron-builder": "^25.1.8",
-    "esbuild": "^0.28.0",
-    "lucide-react": "^0.546.0",
-    "motion": "^12.23.24",
-    "react": "^19.0.1",
-    "react-dom": "^19.0.1",
-    "tailwindcss": "^4.3.3",
-    "tsx": "^4.21.0",
-    "typescript": "^7.0.2",
-    "vite": "^8.3.0"
+    "electron-builder": "^25.1.8"
   }
 }
